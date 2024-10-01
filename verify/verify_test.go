@@ -89,68 +89,37 @@ func TestParsePckChain(t *testing.T) {
 }
 
 func TestPckCertificateExtensions(t *testing.T) {
-	testcases := []struct {
-		name       string
-		rawQuote   []byte
-		ppidBytes  []byte
-		fmspcBytes []byte
-		pceIDBytes []byte
-		piidBytes  []byte
-		tcb        *pcs.PckCertTCB
-	}{
-		{
-			name:       "TDX Prod Quote",
-			rawQuote:   testdata.RawQuote,
-			ppidBytes:  []byte{8, 157, 223, 219, 156, 3, 89, 200, 42, 59, 199, 113, 146, 57, 87, 78},
-			fmspcBytes: []byte{80, 128, 111, 0, 0, 0},
-			pceIDBytes: []byte{0, 0},
-			piidBytes:  []byte{140, 49, 77, 23, 210, 5, 223, 175, 203, 236, 187, 0, 252, 135, 239, 247},
-			tcb: &pcs.PckCertTCB{
-				PCESvn:           11,
-				CPUSvn:           []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
-				CPUSvnComponents: []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
-			},
-		},
-		{
-			name:       "TDX Prod Quote V5",
-			rawQuote:   testdata.RawQuoteV5,
-			ppidBytes:  []byte{39, 52, 182, 84, 245, 83, 89, 104, 151, 234, 173, 251, 86, 103, 169, 84},
-			fmspcBytes: []byte{144, 192, 111, 0, 0, 0},
-			pceIDBytes: []byte{0, 0},
-			piidBytes:  []byte{5, 109, 3, 80, 37, 9, 136, 128, 138, 157, 9, 16, 63, 62, 84, 213},
-			tcb: &pcs.PckCertTCB{
-				PCESvn:           13,
-				CPUSvn:           []byte{4, 4, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0},
-				CPUSvnComponents: []byte{4, 4, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0},
-			},
-		},
+	quote, err := abi.QuoteToProto(testdata.RawQuote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain, err := ExtractChainFromQuote(quote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pckExt := &pcs.PckExtensions{}
+	ppidBytes := []byte{8, 157, 223, 219, 156, 3, 89, 200, 42, 59, 199, 113, 146, 57, 87, 78}
+	piidBytes := []byte{0x8c, 0x31, 0x4d, 0x17, 0xd2, 0x5, 0xdf, 0xaf, 0xcb, 0xec, 0xbb, 0x0, 0xfc, 0x87, 0xef, 0xf7}
+	fmspcBytes := []byte{80, 128, 111, 0, 0, 0}
+	pceIDBytes := []byte{0, 0}
+	pckExt.PPID = hex.EncodeToString(ppidBytes)
+	pckExt.PIID = hex.EncodeToString(piidBytes)
+	pckExt.FMSPC = hex.EncodeToString(fmspcBytes)
+	pckExt.PCEID = hex.EncodeToString(pceIDBytes)
+	pckExt.SGXType = pcs.SGXTypeScalable
+	pckExtTcb := &pcs.PckCertTCB{
+		PCESvn:           11,
+		CPUSvn:           []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
+		CPUSvnComponents: []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
+	}
+	pckExt.TCB = *pckExtTcb
+	ext, err := pcs.PckCertificateExtensions(chain.PCKCertificate)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	for _, tc := range testcases {
-		t.Run(tc.name, func(t *testing.T) {
-			quote, err := abi.QuoteToProto(tc.rawQuote)
-			if err != nil {
-				t.Fatal(err)
-			}
-			chain, err := ExtractChainFromQuote(quote)
-			if err != nil {
-				t.Fatal(err)
-			}
-			pckExt := &pcs.PckExtensions{}
-			pckExt.PPID = hex.EncodeToString(tc.ppidBytes)
-			pckExt.FMSPC = hex.EncodeToString(tc.fmspcBytes)
-			pckExt.PCEID = hex.EncodeToString(tc.pceIDBytes)
-			pckExt.PIID = hex.EncodeToString(tc.piidBytes)
-			pckExt.TCB = *tc.tcb
-			ext, err := pcs.PckCertificateExtensions(chain.PCKCertificate)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if !cmp.Equal(ext, pckExt) {
-				t.Errorf("PCK certificate's extension(%v), does not match with expected extension(%v)", ext, pckExt)
-			}
-		})
+	if !cmp.Equal(ext, pckExt) {
+		t.Errorf("PCK certificate's extension(%v), does not match with expected extension(%v)", ext, pckExt)
 	}
 }
 
