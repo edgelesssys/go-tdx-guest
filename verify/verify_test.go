@@ -142,6 +142,7 @@ func TestPckCertificateExtensions(t *testing.T) {
 			pckExt.PCEID = hex.EncodeToString(tc.pceIDBytes)
 			pckExt.PIID = hex.EncodeToString(tc.piidBytes)
 			pckExt.TCB = *tc.tcb
+			pckExt.SGXType = pcs.SGXTypeScalable
 			ext, err := pcs.PckCertificateExtensions(chain.PCKCertificate)
 			if err != nil {
 				t.Fatal(err)
