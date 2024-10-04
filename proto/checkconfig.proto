@@ -30,6 +30,8 @@ message Policy {
   // TDQuoteBodyPolicy is representation of TdQuoteBody of an attestation quote
   // validation policy.
   TDQuoteBodyPolicy td_quote_body_policy = 2;  // should be 528 bytes
+
+  PCKPolicy pck_policy = 3;
 }
 
 message HeaderPolicy {
@@ -56,6 +58,16 @@ message TDQuoteBodyPolicy {
   bytes minimum_tee_tcb_svn2 = 13;  // should be 16 bytes
   bytes mr_service_td = 14;         // should be 48 bytes
   bool enable_td_migratable_check = 15;  // if true, check that the MIGRATABLE bit is 0 in TDAttributes.
+}
+
+message PCKPolicy {
+  optional SGXType sgx_type = 1;
+}
+
+enum SGXType {
+  Standard = 0;
+  Scalable = 1;
+  ScalableWithIntegrity = 2;
 }
 
 // RootOfTrust represents configuration for which hardware root of trust
