@@ -288,7 +288,7 @@ func TestRtmrs(t *testing.T) {
 func TestCheckGoodFields(t *testing.T) {
 	for _, tc := range testCases() {
 		t.Run(tc.flag, func(t *testing.T) {
-			p := &ccpb.Policy{HeaderPolicy: &ccpb.HeaderPolicy{}, TdQuoteBodyPolicy: &ccpb.TDQuoteBodyPolicy{}}
+			p := &ccpb.Policy{HeaderPolicy: &ccpb.HeaderPolicy{}, TdQuoteBodyPolicy: &ccpb.TDQuoteBodyPolicy{}, PckPolicy: &ccpb.PCKPolicy{}}
 			if tc.setter(p, tc.good, t) {
 				t.Fatal("unexpected parse failure")
 			}
@@ -306,7 +306,7 @@ func TestCheckBadFields(t *testing.T) {
 	for _, tc := range testCases() {
 		for i, bad := range tc.bad {
 			t.Run(fmt.Sprintf("%s_bad[%d]", tc.flag, i+1), func(t *testing.T) {
-				p := &ccpb.Policy{HeaderPolicy: &ccpb.HeaderPolicy{}, TdQuoteBodyPolicy: &ccpb.TDQuoteBodyPolicy{}}
+				p := &ccpb.Policy{HeaderPolicy: &ccpb.HeaderPolicy{}, TdQuoteBodyPolicy: &ccpb.TDQuoteBodyPolicy{}, PckPolicy: &ccpb.PCKPolicy{}}
 				if tc.setter(p, bad, t) {
 					return
 				}
@@ -325,7 +325,7 @@ func TestCheckGoodFlagOverridesBadField(t *testing.T) {
 	for _, tc := range testCases() {
 		for i, bad := range tc.bad {
 			t.Run(fmt.Sprintf("%s_bad[%d]", tc.flag, i+1), func(t *testing.T) {
-				p := &ccpb.Policy{HeaderPolicy: &ccpb.HeaderPolicy{}, TdQuoteBodyPolicy: &ccpb.TDQuoteBodyPolicy{}}
+				p := &ccpb.Policy{HeaderPolicy: &ccpb.HeaderPolicy{}, TdQuoteBodyPolicy: &ccpb.TDQuoteBodyPolicy{}, PckPolicy: &ccpb.PCKPolicy{}}
 				if tc.setter(p, bad, t) {
 					return
 				}
@@ -344,7 +344,7 @@ func TestCheckBadFlagOverridesGoodField(t *testing.T) {
 	for _, tc := range testCases() {
 		for i, bad := range tc.bad {
 			t.Run(fmt.Sprintf("%s_bad[%d]", tc.flag, i+1), func(t *testing.T) {
-				p := &ccpb.Policy{HeaderPolicy: &ccpb.HeaderPolicy{}, TdQuoteBodyPolicy: &ccpb.TDQuoteBodyPolicy{}}
+				p := &ccpb.Policy{HeaderPolicy: &ccpb.HeaderPolicy{}, TdQuoteBodyPolicy: &ccpb.TDQuoteBodyPolicy{}, PckPolicy: &ccpb.PCKPolicy{}}
 				if tc.setter(p, tc.good, t) {
 					t.Fatal("unexpected parse failure")
 				}

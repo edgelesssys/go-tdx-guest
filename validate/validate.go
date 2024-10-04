@@ -180,6 +180,10 @@ func PolicyToOptions(policy *ccpb.Policy) (*Options, error) {
 		},
 	}
 
+	if policy.PckPolicy != nil && policy.PckPolicy.SgxType != nil {
+		value := pcs.SGXType(*policy.PckPolicy.SgxType)
+		opts.PCKOptions.SgxType = &value
+	}
 	if err := checkOptionsLengths(opts); err != nil {
 		return nil, err
 	}
