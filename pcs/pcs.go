@@ -31,6 +31,7 @@ const (
 	pckCertExtensionSize = 6
 	sgxExtensionMinSize  = 4
 	tcbExtensionSize     = 18
+	piidSize             = 16
 	ppidSize             = 16
 	cpuSvnSize           = 16
 	fmspcSize            = 6
@@ -77,6 +78,8 @@ var (
 	OidFMSPC = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 4})
 	// OidSGXType is the x509v3 extension for PCK certificate's SGX Extensions SGX Type value.
 	OidSGXType = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 5})
+	// OidPIID is the x509v3 extension for PCK certificate's SGX Extensions PIID value.
+	OidPIID = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 6})
 
 	// ErrPckExtInvalid error returned when parsing PCK certificate's extension returns leftover bytes
 	ErrPckExtInvalid = errors.New("unexpected leftover bytes for PCK certificate's extension")
@@ -185,6 +188,7 @@ type PckExtensions struct {
 	PCEID   string
 	FMSPC   string
 	SGXType SGXType
+	PIID    string
 }
 
 // SGXType represents the type of the platform for which the PCK certificate was created
@@ -465,6 +469,12 @@ func extractSgxExtensions(extensions []asn1.RawValue) (*PckExtensions, error) {
 				return nil, fmt.Errorf("could not parse SGX extension's in PCK certificate: %v", err)
 			}
 			pckExtension.SGXType = SGXType(sExtension.Value)
+		}
+		if sExtension.Type.Equal(OidPIID) {
+			pckExtension.PIID, err = extractAsn1OctetStringExtension("PIID", extensions[i], piidSize)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	return pckExtension, nil
