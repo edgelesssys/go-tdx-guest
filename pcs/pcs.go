@@ -80,6 +80,14 @@ var (
 	OidSGXType = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 5})
 	// OidPIID is the x509v3 extension for PCK certificate's SGX Extensions PIID value.
 	OidPIID = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 6})
+	// OidConfiguration is the x509v3 extension for the PCK certificate's configuration extension.
+	OidConfiguration = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 7})
+	// OidDynamicPlatform is the x509v3 extension for the PCK certificate's DynamicPlatform configuration extension.
+	OidDynamicPlatform = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 7, 1})
+	// OidCachedKeys is the x509v3 extension for the PCK certificate's CachedKeys configuration extension.
+	OidCachedKeys = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 7, 2})
+	// OidSMTEnabled is the x509v3 extension for the PCK certificate's SMTEnabled configuration extension.
+	OidSMTEnabled = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 7, 3})
 
 	// ErrPckExtInvalid error returned when parsing PCK certificate's extension returns leftover bytes
 	ErrPckExtInvalid = errors.New("unexpected leftover bytes for PCK certificate's extension")
@@ -180,15 +188,23 @@ type PckCertTCB struct {
 	CPUSvnComponents []byte
 }
 
+// PckCertConfiguration stores configuration items found in the PCK cert.
+type PckCertConfiguration struct {
+	DynamicPlatform bool
+	CachedKeys      bool
+	SMTEnabled      bool
+}
+
 // PckExtensions represents the information stored in the x509 extensions of a PCK certificate which
 // will be required for verification/validation
 type PckExtensions struct {
-	PPID    string
-	TCB     PckCertTCB
-	PCEID   string
-	FMSPC   string
-	SGXType SGXType
-	PIID    string
+	PPID          string
+	TCB           PckCertTCB
+	PCEID         string
+	FMSPC         string
+	SGXType       SGXType
+	PIID          string
+	Configuration PckCertConfiguration
 }
 
 // SGXType represents the type of the platform for which the PCK certificate was created
@@ -397,6 +413,48 @@ func extractAsn1SequenceTcbExtension(ext asn1.RawValue) (*PckCertTCB, error) {
 	return tcb, nil
 }
 
+func extractAsn1SequenceConfigExtension(ext asn1.RawValue) (*PckCertConfiguration, error) {
+	var sExtension []asn1.RawValue
+	rest, err := asn1.Unmarshal(ext.FullBytes, &sExtension)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse configuration extension present inside the SGX extension in PCK certificate: %v", err)
+	}
+	if len(rest) != 0 {
+		return nil, errors.New("unexpected leftover bytes for configuration extension inside SGX extension field")
+	}
+	if len(sExtension) != 2 {
+		return nil, fmt.Errorf("configuration extension when unmarshalled is of size %d, expected 2", len(sExtension))
+	}
+
+	var configExtensions []struct {
+		Type  asn1.ObjectIdentifier
+		Value bool
+	}
+	rest, err = asn1.Unmarshal(sExtension[1].FullBytes, &configExtensions)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse configuration items present inside the SGX extension in PCK certificate: %v", err)
+	}
+	if len(rest) != 0 {
+		return nil, errors.New("unexpected leftover bytes for configuration extension list inside SGX extension field")
+	}
+
+	config := &PckCertConfiguration{}
+	for _, item := range configExtensions {
+		switch {
+		case item.Type.Equal(OidDynamicPlatform):
+			config.DynamicPlatform = item.Value
+		case item.Type.Equal(OidCachedKeys):
+			config.CachedKeys = item.Value
+		case item.Type.Equal(OidSMTEnabled):
+			config.SMTEnabled = item.Value
+		default:
+			return nil, fmt.Errorf("unsupported configuration extension OID: %v", item.Type)
+		}
+	}
+
+	return config, nil
+}
+
 func extractAsn1OctetStringExtension(name string, extension asn1.RawValue, size int) (string, error) {
 	var sExtension pkix.Extension
 	rest, err := asn1.Unmarshal(extension.FullBytes, &sExtension)
@@ -475,6 +533,13 @@ func extractSgxExtensions(extensions []asn1.RawValue) (*PckExtensions, error) {
 			if err != nil {
 				return nil, err
 			}
+		}
+		if sExtension.Type.Equal(OidConfiguration) {
+			configuration, err := extractAsn1SequenceConfigExtension(extensions[i])
+			if err != nil {
+				return nil, err
+			}
+			pckExtension.Configuration = *configuration
 		}
 	}
 	return pckExtension, nil

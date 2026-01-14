@@ -114,6 +114,12 @@ func TestPckCertificateExtensions(t *testing.T) {
 		CPUSvnComponents: []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
 	}
 	pckExt.TCB = *pckExtTcb
+	pckExtConfiguration := &pcs.PckCertConfiguration{
+		DynamicPlatform: true,
+		CachedKeys:      false,
+		SMTEnabled:      true,
+	}
+	pckExt.Configuration = *pckExtConfiguration
 	ext, err := pcs.PckCertificateExtensions(chain.PCKCertificate)
 	if err != nil {
 		t.Fatal(err)
