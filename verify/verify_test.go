@@ -97,6 +97,7 @@ func TestPckCertificateExtensions(t *testing.T) {
 		pceIDBytes []byte
 		piidBytes  []byte
 		tcb        *pcs.PckCertTCB
+		config     pcs.PckCertConfiguration
 	}{
 		{
 			name:       "TDX Prod Quote",
@@ -110,6 +111,11 @@ func TestPckCertificateExtensions(t *testing.T) {
 				CPUSvn:           []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
 				CPUSvnComponents: []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
 			},
+			config: pcs.PckCertConfiguration{
+				DynamicPlatform: true,
+				CachedKeys:      false,
+				SMTEnabled:      true,
+			},
 		},
 		{
 			name:       "TDX Prod Quote V5",
@@ -122,6 +128,11 @@ func TestPckCertificateExtensions(t *testing.T) {
 				PCESvn:           13,
 				CPUSvn:           []byte{4, 4, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0},
 				CPUSvnComponents: []byte{4, 4, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0},
+			},
+			config: pcs.PckCertConfiguration{
+				DynamicPlatform: true,
+				CachedKeys:      true,
+				SMTEnabled:      true,
 			},
 		},
 	}
@@ -143,6 +154,7 @@ func TestPckCertificateExtensions(t *testing.T) {
 			pckExt.PIID = hex.EncodeToString(tc.piidBytes)
 			pckExt.TCB = *tc.tcb
 			pckExt.SGXType = pcs.SGXTypeScalable
+			pckExt.Configuration = tc.config
 			ext, err := pcs.PckCertificateExtensions(chain.PCKCertificate)
 			if err != nil {
 				t.Fatal(err)
