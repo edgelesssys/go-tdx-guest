@@ -101,6 +101,15 @@ type TdQuoteBodyOptions struct {
 type PCKOptions struct {
 	// SgxType is the expected SGXType. Not checked if nil.
 	SgxType *pcs.SGXType
+
+	// PCK certificate configuration items.
+
+	// SMTEnabled is the expected SMTEnabled status in the PCK configuration section. Not checked if nil.
+	SMTEnabled *bool
+	// DynamicPlatform is the expected DynamicPlatform status in the PCK configuration section. Not checked if nil.
+	DynamicPlatform *bool
+	// CachedKeys is the expected CachedKeys status in the PCK configuration section. Not checked if nil.
+	CachedKeys *bool
 }
 
 func lengthCheck(name string, length int, value []byte) error {
@@ -365,6 +374,15 @@ func validatePck(quote *pb.QuoteV4, opts *PCKOptions) error {
 	}
 	if opts.SgxType != nil && *opts.SgxType != exts.SGXType {
 		return fmt.Errorf("PCK extension SGXType is %d. Expect %d", *opts.SgxType, exts.SGXType)
+	}
+	if opts.SMTEnabled != nil && *opts.SMTEnabled != exts.Configuration.SMTEnabled {
+		return fmt.Errorf("PCK extension SMTEnabled is %v. Expect %v", exts.Configuration.SMTEnabled, *opts.SMTEnabled)
+	}
+	if opts.DynamicPlatform != nil && *opts.DynamicPlatform != exts.Configuration.DynamicPlatform {
+		return fmt.Errorf("PCK extension DynamicPlatform is %v. Expect %v", exts.Configuration.DynamicPlatform, *opts.DynamicPlatform)
+	}
+	if opts.CachedKeys != nil && *opts.CachedKeys != exts.Configuration.CachedKeys {
+		return fmt.Errorf("PCK extension CachedKeys is %v. Expect %v", exts.Configuration.CachedKeys, *opts.CachedKeys)
 	}
 	return nil
 }
