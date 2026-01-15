@@ -191,6 +191,11 @@ type Options struct {
 	// If nil, embedded certificate will be used
 	TrustedRoots *x509.CertPool
 
+	// EvaluationDataNumber for TCB info that should be requested from PCS.
+	// If this is non-zero and verification succeeds, the TCB info was at EvaluationDataNumber or newer.
+	// If GetCollateral is false, the TCBInfo will not be fetched and thus the number is not checked.
+	EvaluationDataNumber int
+
 	chain             *PCKCertificateChain
 	collateral        *Collateral
 	pckCertExtensions *pcs.PckExtensions
@@ -391,11 +396,15 @@ func getPckCrl(ctx context.Context, ca string, getter trust.HTTPSGetter, collate
 	return nil
 }
 
-func getTcbInfo(ctx context.Context, fmspc string, getter trust.HTTPSGetter, collateral *Collateral) error {
+func getTcbInfo(ctx context.Context, fmspc string, getter trust.HTTPSGetter, collateral *Collateral, evaluationDataNumber int) error {
 	tcbInfoURL := pcs.TcbInfoURL(fmspc)
+	if evaluationDataNumber > 0 {
+		tcbInfoURL = pcs.TcbInfoURLWithEvaluationDataNumber(fmspc, evaluationDataNumber)
+	}
 	logger.V(2).Info("Getting TCB Info: ", tcbInfoURL)
 	header, body, err := trust.GetWith(ctx, getter, tcbInfoURL)
 	if err != nil {
+		// TODO(burgerdev): 410 means evaluationDataNumber is too old, but the HTTPSGetter interface does not allow inspection of the return code.
 		return &trust.AttestationRecreationErr{
 			Msg: fmt.Sprintf("could not receive tcbInfo response: %v", err),
 		}
@@ -414,6 +423,17 @@ func getTcbInfo(ctx context.Context, fmspc string, getter trust.HTTPSGetter, col
 	if err := json.Unmarshal(body, &collateral.TdxTcbInfo); err != nil {
 		return &trust.AttestationRecreationErr{
 			Msg: fmt.Sprintf("unable to unmarshal tcbInfo response: %v", err),
+		}
+	}
+
+	// According to the docs [1], if we explicitly requested an evaluation number and the request
+	// succeeded, the response should contain exactly that number. If there's a mismatch, we're
+	// either dealing with a non-compliant PCS or being MITM'd.
+	//
+	// [1]: https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
+	if evaluationDataNumber > 0 && collateral.TdxTcbInfo.TcbInfo.TcbEvaluationDataNumber < evaluationDataNumber {
+		return &trust.AttestationRecreationErr{
+			Msg: fmt.Sprintf("PCS responded with an outdated TcbEvaluationDataNumber (got %d, requested %d)", collateral.TdxTcbInfo.TcbInfo.TcbEvaluationDataNumber, evaluationDataNumber),
 		}
 	}
 
@@ -494,7 +514,7 @@ func obtainCollateral(ctx context.Context, fmspc string, ca string, options *Opt
 	}
 	collateral := &Collateral{}
 	logger.V(1).Info("Getting TCB Info API response from the Intel PCS")
-	if err := getTcbInfo(ctx, fmspc, getter, collateral); err != nil {
+	if err := getTcbInfo(ctx, fmspc, getter, collateral, options.EvaluationDataNumber); err != nil {
 		return nil, fmt.Errorf("unable to receive tcbInfo: %v", err)
 	}
 	logger.V(1).Info("Successfully received TCB Info API response from the Intel PCS")

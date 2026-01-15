@@ -586,6 +586,11 @@ func TcbInfoURL(fmspc string) string {
 	return fmt.Sprintf("%s/tcb?fmspc=%s", TdxBaseURL, fmspc)
 }
 
+// TcbInfoURLWithEvaluationDataNumber returns the Intel PCS URL for retrieving TCB Info at a specific evaluationDataNumber.
+func TcbInfoURLWithEvaluationDataNumber(fmspc string, evaluationDataNumber int) string {
+	return fmt.Sprintf("%s/tcb?fmspc=%s&tcbEvaluationDataNumber=%d", TdxBaseURL, fmspc, evaluationDataNumber)
+}
+
 // QeIdentityURL returns the Intel PCS URL for retrieving QE identity
 func QeIdentityURL() string {
 	return fmt.Sprintf("%s/qe/identity", TdxBaseURL)
