@@ -75,6 +75,9 @@ func TestTdxQuote(t *testing.T) {
 		0xeb, 0x74, 0x6, 0xa3, 0x8d, 0x1e, 0xed, 0x31, 0x3b, 0x98, 0x7a, 0x46, 0x7d, 0xac, 0xea, 0xd6,
 		0xf0, 0xc8, 0x7a, 0x6d, 0x76, 0x6c, 0x66, 0xf6, 0xf2, 0x9f, 0x8a, 0xcb, 0x28, 0x1f, 0x11, 0x13}
 	sgxType := pcs.SGXTypeScalable
+	smtEnabled := true
+	dynamicPlatform := true
+	cachedKeys := false
 
 	mknonce := func(front []byte) []byte {
 		result := make([]byte, 64)
@@ -143,7 +146,10 @@ func TestTdxQuote(t *testing.T) {
 					EnableTdDebugCheck: true,
 				},
 				PCKOptions: PCKOptions{
-					SgxType: &sgxType,
+					SgxType:         &sgxType,
+					SMTEnabled:      &smtEnabled,
+					DynamicPlatform: &dynamicPlatform,
+					CachedKeys:      &cachedKeys,
 				},
 			},
 		},
@@ -308,6 +314,30 @@ func TestTdxQuote(t *testing.T) {
 			},
 			wantErr: "PCK extension SGXType",
 		},
+		{
+			name:  "Test incorrect SMTEnabled",
+			quote: quote12345,
+			opts: &Options{
+				PCKOptions: PCKOptions{SMTEnabled: toPtr(false)},
+			},
+			wantErr: "PCK extension SMTEnabled",
+		},
+		{
+			name:  "Test incorrect DynamicPlatform",
+			quote: quote12345,
+			opts: &Options{
+				PCKOptions: PCKOptions{DynamicPlatform: toPtr(false)},
+			},
+			wantErr: "PCK extension DynamicPlatform",
+		},
+		{
+			name:  "Test incorrect CachedKeys",
+			quote: quote12345,
+			opts: &Options{
+				PCKOptions: PCKOptions{CachedKeys: toPtr(true)},
+			},
+			wantErr: "PCK extension CachedKeys",
+		},
 	}
 
 	for _, tc := range tests {
@@ -316,4 +346,8 @@ func TestTdxQuote(t *testing.T) {
 			t.Errorf("%s: TdxQuote() errored unexpectedly. Got '%v', want '%s'", tc.name, err, tc.wantErr)
 		}
 	}
+}
+
+func toPtr[A any](a A) *A {
+	return &a
 }
