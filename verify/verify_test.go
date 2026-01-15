@@ -472,8 +472,24 @@ func TestGetTcbInfo(t *testing.T) {
 	fmspc := hex.EncodeToString(fmspcBytes)
 
 	collateral := &Collateral{}
-	if err := getTcbInfo(context.Background(), fmspc, getter, collateral); err != nil {
+	if err := getTcbInfo(context.Background(), fmspc, getter, collateral, 0); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestGetTcbInfoOutdatedTcbEvalutationDataNumber(t *testing.T) {
+	getter := testcases.TestGetter
+	fmspcBytes := []byte{80, 128, 111, 0, 0, 0}
+	fmspc := hex.EncodeToString(fmspcBytes)
+
+	collateral := &Collateral{}
+
+	err := getTcbInfo(context.Background(), fmspc, getter, collateral, 255)
+	if err == nil {
+		t.Fatal("expected an error when PCS returns outdated TcbEvalutationDataNumber")
+	}
+	if !strings.Contains(err.Error(), "outdated TcbEvaluationDataNumber") {
+		t.Fatalf("unexpected error when PCS returns outdated TcbEvalutationDataNumber: %v", err)
 	}
 }
 
@@ -567,7 +583,7 @@ func TestVerifyUsingTcbInfoV4(t *testing.T) {
 	fmspc := hex.EncodeToString(fmspcBytes)
 
 	collateral := &Collateral{}
-	if err := getTcbInfo(context.Background(), fmspc, getter, collateral); err != nil {
+	if err := getTcbInfo(context.Background(), fmspc, getter, collateral, 0); err != nil {
 		t.Fatal(err)
 	}
 	anyQuote, err := abi.QuoteToProto(testdata.RawQuote)
@@ -640,7 +656,7 @@ func TestVerifyUsingTcbInfoV5(t *testing.T) {
 	fmspc := ext.FMSPC
 	collateral := &Collateral{}
 
-	if err := getTcbInfo(context.Background(), fmspc, getter, collateral); err != nil {
+	if err := getTcbInfo(context.Background(), fmspc, getter, collateral, 0); err != nil {
 		t.Fatal(err)
 	}
 	tcbInfo := collateral.TdxTcbInfo.TcbInfo
@@ -686,7 +702,7 @@ func TestNegativeVerifyUsingTcbInfoV4(t *testing.T) {
 	fmspc := hex.EncodeToString(fmspcBytes)
 
 	collateral := &Collateral{}
-	if err := getTcbInfo(context.Background(), fmspc, getter, collateral); err != nil {
+	if err := getTcbInfo(context.Background(), fmspc, getter, collateral, 0); err != nil {
 		t.Fatal(err)
 	}
 	anyQuote, err := abi.QuoteToProto(testdata.RawQuote)
@@ -847,7 +863,7 @@ func TestNegativeTcbInfoTcbStatusV4(t *testing.T) {
 	fmspc := hex.EncodeToString(fmspcBytes)
 
 	collateral := &Collateral{}
-	if err := getTcbInfo(context.Background(), fmspc, getter, collateral); err != nil {
+	if err := getTcbInfo(context.Background(), fmspc, getter, collateral, 0); err != nil {
 		t.Fatal(err)
 	}
 	anyQuote, err := abi.QuoteToProto(testdata.RawQuote)
