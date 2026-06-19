@@ -46,13 +46,14 @@ const (
 	// tcbInfoIssuerChainHeaderKey retrieves the issuer chain from the Intel PCS API:
 	// https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
 	tcbInfoIssuerChainHeaderKey = "TCB-Info-Issuer-Chain"
+)
+
+var (
 	// SgxBaseURL is the base URL for fetching SGX related info from the Intel PCS API.
 	SgxBaseURL = "https://api.trustedservices.intel.com/sgx/certification/v4"
 	// TdxBaseURL is the base URL for fetching TDX related info from the Intel PCS API.
 	TdxBaseURL = "https://api.trustedservices.intel.com/tdx/certification/v4"
-)
 
-var (
 	sgxTcbComponentOidPrefix = []int{1, 2, 840, 113741, 1, 13, 1, 2}
 
 	// SgxPckCrlIssuerChainPhrase conforms to the canonicalized header key format used by Go's net/http package.
