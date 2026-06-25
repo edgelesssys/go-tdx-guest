@@ -26,7 +26,7 @@ var RawQuote []byte
 
 // RawQuoteV5 contains raw bytes of quote v5. To be used only for testing
 //
-//go:embed "quote_v5_sample.dat"
+//go:embed "quote_sample_v5.dat"
 var RawQuoteV5 []byte
 
 // RawReport contains raw bytes of report. To be used only for testing
@@ -48,6 +48,11 @@ var RootCrlBody []byte
 //
 //go:embed "sample_tcbInfo_response"
 var TcbInfoBody []byte
+
+// TcbInfoV5Body contains sample TCBInfo response for TDX 1.5. To be used only for testing
+//
+//go:embed "sample_tcbinfo_response_v5"
+var TcbInfoBodyV5 []byte
 
 // QeIdentityBody  contains sample QeIdentity response. To be used only for testing
 //

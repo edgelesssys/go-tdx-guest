@@ -151,6 +151,10 @@ var (
 	ErrCertNil = errors.New("certificate is nil")
 	// ErrParentCertNil error returned when parent certificate is not provided
 	ErrParentCertNil = errors.New("parent certificate is nil")
+	// ErrTcbTdRelaunchAdvised error returned when the host platform (Microcode/FW) is outdated
+	ErrTcbTdRelaunchAdvised = errors.New("the host platform (Microcode/FW) is outdated. Update the host platform and restart the TD")
+	// ErrTcbTdRelaunchAdvicedConfiguratonNeeded error returned when the host is outdated and the TD's specific configuration is insecure
+	ErrTcbTdRelaunchAdvicedConfiguratonNeeded = errors.New("the host is outdated and the TD's specific configuration is insecure. Modify the TD configuration, update the host, and restart the TD")
 )
 
 const (
@@ -650,16 +654,15 @@ func verifyCollateral(options *Options) error {
 // ExtractChainFromQuote extracts a SGX PCK CertificateChain from a given TD quote.
 // It is the caller's responsibility to verify the quote before calling this function.
 func ExtractChainFromQuote(quote any) (*PCKCertificateChain, error) {
-	switch q := quote.(type) {
-	case *pb.QuoteV4:
-		return extractChainFromQuoteV4(q)
-	default:
-		return nil, fmt.Errorf("unsupported quote type: %T", quote)
+	signedData, versionErr := getSignedData(quote)
+	if versionErr != nil {
+		return nil, versionErr
 	}
+	return extractChainFromQuote(signedData)
 }
 
-func extractChainFromQuoteV4(quote *pb.QuoteV4) (*PCKCertificateChain, error) {
-	certChainBytes := quote.GetSignedData().GetCertificationData().GetQeReportCertificationData().GetPckCertificateChainData().GetPckCertChain()
+func extractChainFromQuote(signedData *pb.Ecdsa256BitQuoteV4AuthData) (*PCKCertificateChain, error) {
+	certChainBytes := signedData.GetCertificationData().GetQeReportCertificationData().GetPckCertificateChainData().GetPckCertChain()
 	if certChainBytes == nil {
 		return nil, ErrPCKCertChainNil
 	}
@@ -788,16 +791,37 @@ func validateCRL(crl *x509.RevocationList, trustedCertificate *x509.Certificate)
 	return nil
 }
 
-func getHeaderAndTdQuoteBodyInAbiBytes(quote *pb.QuoteV4) ([]byte, error) {
-	header, err := abi.HeaderToAbiBytes(quote.GetHeader())
-	if err != nil {
-		return nil, fmt.Errorf("could not convert header to ABI bytes: %v", err)
+func getHeaderAndTdQuoteBodyInAbiBytes(quote any) ([]byte, error) {
+	switch q := quote.(type) {
+	case *pb.QuoteV4:
+		header := q.GetHeader()
+		tdQuoteBody := q.GetTdQuoteBody()
+		headerBytes, err := abi.HeaderToAbiBytes(header)
+		if err != nil {
+			return nil, fmt.Errorf("could not convert header to ABI bytes: %v", err)
+		}
+		quoteBodyBytes, err := abi.TdQuoteBodyToAbiBytes(tdQuoteBody)
+		if err != nil {
+			return nil, fmt.Errorf("could not convert TD Quote Body to ABI bytes: %v", err)
+		}
+		return append(headerBytes, quoteBodyBytes...), nil
+
+	case *pb.QuoteV5:
+		header := q.GetHeader()
+		headerBytes, err := abi.HeaderToAbiBytes(header)
+		if err != nil {
+			return nil, fmt.Errorf("could not convert header to ABI bytes: %v", err)
+		}
+		quoteBodyDescriptorBytes, err := abi.TdQuoteBodyDescriptorToAbiBytes(q.GetTdQuoteBodyDescriptor())
+		if err != nil {
+			return nil, fmt.Errorf("could not convert TD Quote Body Descriptor to ABI bytes: %v", err)
+		}
+		return append(headerBytes, quoteBodyDescriptorBytes...), nil
+
+	default:
+		return nil, fmt.Errorf("unsupported quote type: %T", quote)
 	}
-	tdQuoteBody, err := abi.TdQuoteBodyToAbiBytes(quote.GetTdQuoteBody())
-	if err != nil {
-		return nil, fmt.Errorf("could not convert TD Quote Body to ABI bytes: %v", err)
-	}
-	return append(header, tdQuoteBody...), nil
+
 }
 
 func verifyPCKCertificationChain(options *Options) error {
@@ -895,16 +919,16 @@ func x509Options(trustedRoots *x509.CertPool, intermediateCert *x509.Certificate
 	return x509.VerifyOptions{Roots: trustedRoots, Intermediates: intermediates, CurrentTime: now}
 }
 
-func verifyHash256(quote *pb.QuoteV4) error {
-	qeReportCertificationData := quote.GetSignedData().GetCertificationData().GetQeReportCertificationData()
+func verifyHash256(signedData *pb.Ecdsa256BitQuoteV4AuthData) error {
+	qeReportCertificationData := signedData.GetCertificationData().GetQeReportCertificationData()
 	qeReportData := qeReportCertificationData.GetQeReport().GetReportData()
 	qeAuthData := qeReportCertificationData.GetQeAuthData().GetData()
-	attestKey := quote.GetSignedData().GetEcdsaAttestationKey()
+	attestKey := signedData.GetEcdsaAttestationKey()
 
-	concatOfAttestKeyandQeAuthData := append(attestKey, qeAuthData...)
+	attestKeyAndQeAuthData := append(attestKey, qeAuthData...)
 	var hashedMessage []byte
-	hashedConcatOfAttestKeyandQeAuthData := sha256.Sum256(concatOfAttestKeyandQeAuthData)
-	hashedMessage = hashedConcatOfAttestKeyandQeAuthData[:]
+	hashedAttestKeyAndQeAuthData := sha256.Sum256(attestKeyAndQeAuthData)
+	hashedMessage = hashedAttestKeyAndQeAuthData[:]
 	hashedMessage = append(hashedMessage, make([]byte, len(qeReportData)-len(hashedMessage))...)
 	if !bytes.Equal(hashedMessage, qeReportData) {
 		return ErrSHA56VerificationFail
@@ -972,11 +996,15 @@ func getMatchingTdxModuleTcbLevel(tcbInfoTdxModuleIdentities []pcs.TdxModuleIden
 // 2. Compare PCESVN values retrieved from the SGX PCK certificate are greater or equal to the value in TCB level.
 // 3. Compare SVNs in TEE TCB SVN array retrieved from TD Report  are greater or equal to the corresponding values of SVNs in tdxtcbcomponents array of TCB Level.
 // If all checks pass, return the first TCB level as the matching level.
-func getMatchingTcbLevel(tcbLevels []pcs.TcbLevel, tdReport *pb.TDQuoteBody, pckCertPceSvn uint16, pckCertCPUSvnComponents []byte) (pcs.TcbLevel, error) {
+func getMatchingTcbLevel(tcbLevels []pcs.TcbLevel, tdReport any, pckCertPceSvn uint16, pckCertCPUSvnComponents []byte) (pcs.TcbLevel, error) {
+	teeTcbSvn, _, err := getTeeTcbSvn(tdReport)
+	if err != nil {
+		return pcs.TcbLevel{}, err
+	}
 	for _, tcbLevel := range tcbLevels {
 		if isCPUSvnHigherOrEqual(pckCertCPUSvnComponents, tcbLevel.Tcb.SgxTcbcomponents) &&
 			pckCertPceSvn >= tcbLevel.Tcb.Pcesvn &&
-			isTdxTcbSvnHigherOrEqual(tdReport.GetTeeTcbSvn(), tcbLevel.Tcb.TdxTcbcomponents) {
+			isTdxTcbSvnHigherOrEqual(teeTcbSvn, tcbLevel.Tcb.TdxTcbcomponents) {
 			return tcbLevel, nil
 		}
 	}
@@ -1010,30 +1038,89 @@ func checkQeTcbStatus(tcbLevels []pcs.TcbLevel, isvsvn uint32) error {
 
 	return nil
 }
+func getTeeTcbSvn(tdQuoteBody any) ([]byte, []byte, error) {
+	var teeTcbSvn []byte
+	var teeTcbSvn2 []byte
+	switch quoteBody := tdQuoteBody.(type) {
+	case *pb.TDQuoteBody:
+		teeTcbSvn = quoteBody.GetTeeTcbSvn()
+	case *pb.TDQuoteBodyV5:
+		teeTcbSvn = quoteBody.GetTeeTcbSvn()
+		teeTcbSvn2 = quoteBody.GetTeeTcbSvn2()
+	default:
+		return nil, nil, fmt.Errorf("unsupported type for tdQuoteBody: %T", tdQuoteBody)
+	}
+	return teeTcbSvn, teeTcbSvn2, nil
+}
 
-func readTcbInfoTcbStatus(tcbInfo pcs.TcbInfo, tdQuoteBody *pb.TDQuoteBody, pckCertExtensions *pcs.PckExtensions) (pcs.TcbLevel, error) {
+// readTcbInfoTcbStatus Returns status of matched TCB level, matched TDX Module level status, error. returns empty level incase of no level matches
+func readTcbInfoTcbStatus(tcbInfo pcs.TcbInfo, tdQuoteBody any, pckCertExtensions *pcs.PckExtensions) (pcs.TcbLevel, pcs.TcbLevel, error) {
 	tcbLevels := tcbInfo.TcbLevels
 	matchingTcbLevel, err := getMatchingTcbLevel(tcbLevels, tdQuoteBody, pckCertExtensions.TCB.PCESvn, pckCertExtensions.TCB.CPUSvnComponents)
 	if err != nil {
-		return pcs.TcbLevel{}, err
+		return pcs.TcbLevel{}, pcs.TcbLevel{}, err
 	}
 	logger.V(2).Info("Matching TCB Level found: ", matchingTcbLevel)
-
-	if tdQuoteBody.GetTeeTcbSvn()[1] > 0 {
-		matchingTdxModuleTcbLevel, err := getMatchingTdxModuleTcbLevel(tcbInfo.TdxModuleIdentities, tdQuoteBody.GetTeeTcbSvn())
+	teeTcbSvn, _, err := getTeeTcbSvn(tdQuoteBody)
+	if err != nil {
+		return pcs.TcbLevel{}, pcs.TcbLevel{}, err
+	}
+	if teeTcbSvn[1] > 0 {
+		matchingTdxModuleTcbLevel, err := getMatchingTdxModuleTcbLevel(tcbInfo.TdxModuleIdentities, teeTcbSvn)
 		if err != nil {
-			return pcs.TcbLevel{}, err
+			return pcs.TcbLevel{}, pcs.TcbLevel{}, err
 		}
 		logger.V(2).Info("Tdx Module TCB Status found: ", matchingTdxModuleTcbLevel.TcbStatus)
-		return *matchingTdxModuleTcbLevel, nil
+		return matchingTcbLevel, *matchingTdxModuleTcbLevel, nil
 	}
 
 	logger.V(2).Info("TCB Status found: ", matchingTcbLevel.TcbStatus)
-	return matchingTcbLevel, nil
+	return matchingTcbLevel, pcs.TcbLevel{}, nil
 }
 
-func checkTcbInfoTcbStatus(tcbInfo pcs.TcbInfo, tdQuoteBody *pb.TDQuoteBody, pckCertExtensions *pcs.PckExtensions) error {
-	found, err := readTcbInfoTcbStatus(tcbInfo, tdQuoteBody, pckCertExtensions)
+func isConfigurationNeeded(status pcs.TcbComponentStatus) bool {
+	return status == pcs.TcbComponentStatusConfigurationNeeded || status == pcs.TcbComponentStatusConfigurationAndSWHardeningNeeded || status == pcs.TcbComponentStatusOutOfDateConfigurationNeeded || status == pcs.TcbComponentStatusRelaunchAdvisedConfigurationNeeded
+}
+
+func determineRelaunchAdvised(teeTcbSvn2 []byte, matchedTcbLevelStatus pcs.TcbComponentStatus, tdxModuleTcbStatus pcs.TcbComponentStatus, tcbInfo pcs.TcbInfo) error {
+	// if Quote is with TDX1.5 module and if tdxModuleTcbStatus is OutOfDate, relaunch might be required
+	if teeTcbSvn2 != nil && (tdxModuleTcbStatus == pcs.TcbComponentStatusOutOfDate || tdxModuleTcbStatus == pcs.TcbComponentStatusOutOfDateConfigurationNeeded) {
+		latestTcbLevel := tcbInfo.TcbLevels[0]
+		// default TDX module identity
+		if teeTcbSvn2[1] == 0 {
+			// If the host's current SVNs (at index 0 and 2) are greater than or equal to the latest requirements, it means the host has been patched.
+			//  Even if the TD was launched on an old version, the host is now capable of running a secure version.
+			if teeTcbSvn2[0] >= latestTcbLevel.Tcb.TdxTcbcomponents[0].Svn && teeTcbSvn2[2] >= latestTcbLevel.Tcb.TdxTcbcomponents[2].Svn {
+				if isConfigurationNeeded(matchedTcbLevelStatus) || isConfigurationNeeded(tdxModuleTcbStatus) {
+					return ErrTcbTdRelaunchAdvicedConfiguratonNeeded
+				}
+
+				return ErrTcbTdRelaunchAdvised
+			}
+		} else {
+			// Specific TDX module version. Get the corresponding module identity within the TcbInfo's TdxModuleIdentities, and perform checks with it.
+
+			tdxModuleIdentity2, err := getMatchingTdxModuleTcbLevel(tcbInfo.TdxModuleIdentities, teeTcbSvn2)
+			if err != nil {
+				return err
+			}
+			if uint32(teeTcbSvn2[0]) >= tdxModuleIdentity2.Tcb.Isvsvn && teeTcbSvn2[2] >= latestTcbLevel.Tcb.TdxTcbcomponents[2].Svn {
+				if isConfigurationNeeded(tdxModuleTcbStatus) || isConfigurationNeeded(matchedTcbLevelStatus) {
+					return ErrTcbTdRelaunchAdvicedConfiguratonNeeded
+				}
+				return ErrTcbTdRelaunchAdvised
+			}
+		}
+	}
+	return nil
+}
+
+func checkTcbInfoTcbStatus(tcbInfo pcs.TcbInfo, tdQuoteBody any, pckCertExtensions *pcs.PckExtensions) error {
+	_, teeTcbSvn2, err := getTeeTcbSvn(tdQuoteBody)
+	if err != nil {
+		return err
+	}
+	found, tdxModuleFound, err := readTcbInfoTcbStatus(tcbInfo, tdQuoteBody, pckCertExtensions)
 	if err != nil {
 		return err
 	}
@@ -1041,7 +1128,18 @@ func checkTcbInfoTcbStatus(tcbInfo pcs.TcbInfo, tdQuoteBody *pb.TDQuoteBody, pck
 	if found.TcbStatus == pcs.TcbComponentStatusOutOfDate {
 		return ErrTdxTcbStatus
 	}
+	var tdxModuleTcbStatus pcs.TcbComponentStatus
+	if reflect.DeepEqual(tdxModuleFound, pcs.TcbLevel{}) {
+		tdxModuleTcbStatus = pcs.TcbComponentStatusUpToDate
+	} else {
+		// when teeTcbSvn[1] > 0, tdxModuleFound is the matching TDX Module TCB Level.
+		tdxModuleTcbStatus = tdxModuleFound.TcbStatus
+	}
 
+	// Relaunch is advisable if matching TCB level status is UptoDate and TDX Module level status is OutOfDate.
+	if err := determineRelaunchAdvised(teeTcbSvn2, found.TcbStatus, tdxModuleTcbStatus, tcbInfo); err != nil {
+		return err
+	}
 	if found.TcbStatus != pcs.TcbComponentStatusUpToDate {
 		return fmt.Errorf("TDX TCB Status is not %q, found %q", pcs.TcbComponentStatusUpToDate, found.TcbStatus)
 	}
@@ -1049,7 +1147,22 @@ func checkTcbInfoTcbStatus(tcbInfo pcs.TcbInfo, tdQuoteBody *pb.TDQuoteBody, pck
 	return nil
 }
 
-func verifyTdQuoteBody(tdQuoteBody *pb.TDQuoteBody, tdQuoteBodyOptions *tdQuoteBodyOptions) error {
+type tdQuoteBodyProvider interface {
+	GetMrSignerSeam() []byte
+	GetSeamAttributes() []byte
+}
+
+func verifyTdQuoteBody(tdQuoteBody any, tdQuoteBodyOptions *tdQuoteBodyOptions) error {
+	var (
+		mrSignerSeam, seamAttributes []byte
+	)
+	quoteBody, ok := tdQuoteBody.(tdQuoteBodyProvider)
+	if !ok {
+		return fmt.Errorf("unsupported type for tdQuoteBody: %T", tdQuoteBody)
+	}
+	mrSignerSeam = quoteBody.GetMrSignerSeam()
+	seamAttributes = quoteBody.GetSeamAttributes()
+
 	logger.V(2).Infof("FMSPC from PCK Certificate is %q, and FMSPC value from Intel PCS's reported TDX TCB info is %q", tdQuoteBodyOptions.pckCertExtensions.FMSPC, tdQuoteBodyOptions.tcbInfo.Fmspc)
 	// Converting FMSPCs to the same case and compare them in a memory-efficient way.
 	if !strings.EqualFold(tdQuoteBodyOptions.pckCertExtensions.FMSPC, tdQuoteBodyOptions.tcbInfo.Fmspc) {
@@ -1061,15 +1174,15 @@ func verifyTdQuoteBody(tdQuoteBody *pb.TDQuoteBody, tdQuoteBodyOptions *tdQuoteB
 		return fmt.Errorf("PCEID from PCK Certificate(%q) is not equal to PCEID from Intel PCS's reported TDX TCB info(%q)", tdQuoteBodyOptions.pckCertExtensions.PCEID, tdQuoteBodyOptions.tcbInfo.PceID)
 	}
 
-	logger.V(2).Infof("MRSIGNERSEAM value from TD Quote Body is %q, and TdxModule.Mrsigner field in Intel PCS's reported TDX TCB info is %q", hex.EncodeToString(tdQuoteBody.GetMrSignerSeam()), hex.EncodeToString(tdQuoteBodyOptions.tcbInfo.TdxModule.Mrsigner.Bytes))
-	if !bytes.Equal(tdQuoteBodyOptions.tcbInfo.TdxModule.Mrsigner.Bytes, tdQuoteBody.GetMrSignerSeam()) {
-		return fmt.Errorf("MRSIGNERSEAM value from TD Quote Body(%q) is not equal to TdxModule.Mrsigner field in Intel PCS's reported TDX TCB info(%q)", hex.EncodeToString(tdQuoteBody.GetMrSignerSeam()), hex.EncodeToString(tdQuoteBodyOptions.tcbInfo.TdxModule.Mrsigner.Bytes))
+	logger.V(2).Infof("MRSIGNERSEAM value from TD Quote Body is %q, and TdxModule.Mrsigner field in Intel PCS's reported TDX TCB info is %q", hex.EncodeToString(mrSignerSeam), hex.EncodeToString(tdQuoteBodyOptions.tcbInfo.TdxModule.Mrsigner.Bytes))
+	if !bytes.Equal(tdQuoteBodyOptions.tcbInfo.TdxModule.Mrsigner.Bytes, mrSignerSeam) {
+		return fmt.Errorf("MRSIGNERSEAM value from TD Quote Body(%q) is not equal to TdxModule.Mrsigner field in Intel PCS's reported TDX TCB info(%q)", hex.EncodeToString(mrSignerSeam), hex.EncodeToString(tdQuoteBodyOptions.tcbInfo.TdxModule.Mrsigner.Bytes))
 	}
 
-	if len(tdQuoteBodyOptions.tcbInfo.TdxModule.AttributesMask.Bytes) != len(tdQuoteBody.GetSeamAttributes()) {
-		return fmt.Errorf("size of SeamAttributes from TD Quote Body(%d) is not equal to size of TdxModule.AttributesMask in Intel PCS's reported TDX TCB info(%d)", len(tdQuoteBodyOptions.tcbInfo.TdxModule.AttributesMask.Bytes), len(tdQuoteBody.GetSeamAttributes()))
+	if len(tdQuoteBodyOptions.tcbInfo.TdxModule.AttributesMask.Bytes) != len(seamAttributes) {
+		return fmt.Errorf("size of SeamAttributes from TD Quote Body(%d) is not equal to size of TdxModule.AttributesMask in Intel PCS's reported TDX TCB info(%d)", len(tdQuoteBodyOptions.tcbInfo.TdxModule.AttributesMask.Bytes), len(seamAttributes))
 	}
-	attributesMask := applyMask(tdQuoteBodyOptions.tcbInfo.TdxModule.AttributesMask.Bytes, tdQuoteBody.GetSeamAttributes())
+	attributesMask := applyMask(tdQuoteBodyOptions.tcbInfo.TdxModule.AttributesMask.Bytes, seamAttributes)
 
 	logger.V(2).Infof("AttributesMask value is %q, and TdxModule.Attributes field in Intel PCS's reported TDX TCB info is %q", hex.EncodeToString(attributesMask), hex.EncodeToString(tdQuoteBodyOptions.tcbInfo.TdxModule.Attributes.Bytes))
 	if !bytes.Equal(tdQuoteBodyOptions.tcbInfo.TdxModule.Attributes.Bytes, attributesMask) {
@@ -1125,24 +1238,53 @@ func verifyQeReport(qeReport *pb.EnclaveReport, qeReportOptions *qeReportOptions
 	return nil
 }
 
-func verifyQuote(quote *pb.QuoteV4, options *Options) error {
+type signedDataProvider interface {
+	GetSignedData() *pb.Ecdsa256BitQuoteV4AuthData
+}
+
+func getSignedData(quote any) (*pb.Ecdsa256BitQuoteV4AuthData, error) {
+	signedData, ok := quote.(signedDataProvider)
+	if !ok {
+		return nil, fmt.Errorf("unsupported quote type: %T", quote)
+	}
+	return signedData.GetSignedData(), nil
+}
+
+type headerProvider interface {
+	GetHeader() *pb.Header
+}
+
+func getHeader(quote any) (*pb.Header, error) {
+	header, ok := quote.(headerProvider)
+	if !ok {
+		return nil, fmt.Errorf("unsupported quote type: %T", quote)
+	}
+	return header.GetHeader(), nil
+}
+
+func verifyQuote(quote any, options *Options) error {
+	signedData, err := getSignedData(quote)
+	if err != nil {
+		return err
+	}
+
 	chain := options.chain
 	collateral := options.collateral
 	pckCertExtensions := options.pckCertExtensions
-	attestkey := quote.GetSignedData().GetEcdsaAttestationKey()
+	attestKey := signedData.GetEcdsaAttestationKey()
 
 	logger.V(1).Info("Extracting attestation key from the quote")
-	attestPublicKey, err := bytesToEcdsaPubKey(attestkey)
+	attestPublicKey, err := bytesToEcdsaPubKey(attestKey)
 	if err != nil {
 		return fmt.Errorf("attestation key in the quote is invalid: %v", err)
 	}
 	logger.V(1).Info("Attestation key extracted successfully from the quote")
 
 	logger.V(1).Info("Extracting signature present in the quote")
-	signature := quote.GetSignedData().GetSignature()
+	signature := signedData.GetSignature()
 	signature, err = abi.SignatureToDER(signature)
 	if err != nil {
-		return fmt.Errorf("unable to convert QuoteV4's signature to DER format: %v", err)
+		return fmt.Errorf("unable to convert Quote's signature to DER format: %v", err)
 	}
 	logger.V(1).Info("Signature extracted successfully from the quote")
 
@@ -1161,7 +1303,7 @@ func verifyQuote(quote *pb.QuoteV4, options *Options) error {
 	}
 	logger.V(1).Info("Header and TD Quote Body verified successfully")
 
-	qeReportCertificationData := quote.GetSignedData().GetCertificationData().GetQeReportCertificationData()
+	qeReportCertificationData := signedData.GetCertificationData().GetQeReportCertificationData()
 
 	logger.V(1).Info("Verifying the QE Report signature using PCK Leaf certificate")
 	if err := tdxProtoQeReportSignature(qeReportCertificationData, chain.PCKCertificate); err != nil {
@@ -1170,21 +1312,13 @@ func verifyQuote(quote *pb.QuoteV4, options *Options) error {
 	logger.V(1).Info("QE Report signature verified successfully")
 
 	logger.V(1).Info("Verifying QE Report Data")
-	if err := verifyHash256(quote); err != nil {
+	if err := verifyHash256(signedData); err != nil {
 		return fmt.Errorf("error verifying QE report data: %v", err)
 	}
 	logger.V(1).Info("QE Report Data verified successfully")
 
 	if collateral != nil {
-		logger.V(1).Info("Verifying TD Quote Body using TCB Info API response")
-		if err := verifyTdQuoteBody(quote.GetTdQuoteBody(),
-			&tdQuoteBodyOptions{
-				tcbInfo:           collateral.TdxTcbInfo.TcbInfo,
-				pckCertExtensions: pckCertExtensions,
-			}); err != nil {
-			return err
-		}
-		logger.V(1).Info("TD Quote Body verified successfully")
+
 		logger.V(1).Info("Verifying QE Report using QE Identity API response")
 		if err := verifyQeReport(qeReportCertificationData.GetQeReport(),
 			&qeReportOptions{
@@ -1193,6 +1327,29 @@ func verifyQuote(quote *pb.QuoteV4, options *Options) error {
 			return err
 		}
 		logger.V(1).Info("QE Report verified successfully")
+
+		logger.V(1).Info("Verifying TD Quote Body using TCB Info API response")
+		var err error
+		switch q := quote.(type) {
+		case *pb.QuoteV4:
+			err = verifyTdQuoteBody(q.GetTdQuoteBody(),
+				&tdQuoteBodyOptions{
+					tcbInfo:           collateral.TdxTcbInfo.TcbInfo,
+					pckCertExtensions: pckCertExtensions,
+				})
+		case *pb.QuoteV5:
+			err = verifyTdQuoteBody(q.GetTdQuoteBodyDescriptor().GetTdQuoteBodyV5(),
+				&tdQuoteBodyOptions{
+					tcbInfo:           collateral.TdxTcbInfo.TcbInfo,
+					pckCertExtensions: pckCertExtensions,
+				})
+		default:
+			return fmt.Errorf("unsupported quote type: %T", quote)
+		}
+		if err != nil {
+			return err
+		}
+		logger.V(1).Info("TD Quote Body verified successfully")
 	}
 
 	return nil
@@ -1331,16 +1488,12 @@ func verifyQeIdentity(options *Options) error {
 }
 
 func verifyEvidence(quote any, options *Options) error {
-	switch q := quote.(type) {
-	case *pb.QuoteV4:
-		return verifyEvidenceV4(q, options)
-	default:
-		return fmt.Errorf("unsupported quote type: %T", quote)
+	header, err := getHeader(quote)
+	if err != nil {
+		return err
 	}
-}
 
-func verifyEvidenceV4(quote *pb.QuoteV4, options *Options) error {
-	if quote.GetHeader().GetTeeType() != abi.TeeTDX {
+	if header.GetTeeType() != abi.TeeTDX {
 		return abi.ErrTeeType
 	}
 
@@ -1375,7 +1528,7 @@ func verifyEvidenceV4(quote *pb.QuoteV4, options *Options) error {
 
 // TdxQuote verifies the protobuf representation of an attestation quote's signature
 // based on the quote's SignatureAlgo, provided the certificate chain is valid for
-// formats - QuoteV4.
+// formats - QuoteV4, QuoteV5.
 func TdxQuote(quote any, options *Options) error {
 	return TdxQuoteContext(context.TODO(), quote, options)
 }
@@ -1385,12 +1538,7 @@ func TdxQuoteContext(ctx context.Context, quote any, options *Options) error {
 	if options == nil {
 		return ErrOptionsNil
 	}
-	switch q := quote.(type) {
-	case *pb.QuoteV4:
-		return tdxQuoteV4(ctx, q, options)
-	default:
-		return fmt.Errorf("unsupported quote type: %T", quote)
-	}
+	return tdxQuote(ctx, quote, options)
 }
 
 // SupportedTcbLevelsFromCollateral returns the matching TCB levels of TDX TCB and QE Identity respectively by checking collaterals.
@@ -1407,38 +1555,68 @@ func SupportedTcbLevelsFromCollateral(quote any, options *Options) (pcs.TcbLevel
 		return pcs.TcbLevel{}, pcs.TcbLevel{}, ErrMissingPckExt
 	}
 
+	var err error
+
+	signedData, err := getSignedData(quote)
+	if err != nil {
+		return pcs.TcbLevel{}, pcs.TcbLevel{}, err
+	}
+	var (
+		foundTcbInfo, foundTdxModuleTcbLevel pcs.TcbLevel
+		tcbErr                               error
+		teeTcbSvn                            []byte
+	)
 	switch q := quote.(type) {
 	case *pb.QuoteV4:
-		var err error
-		foundTcbInfo, tcbErr := readTcbInfoTcbStatus(options.collateral.TdxTcbInfo.TcbInfo, q.GetTdQuoteBody(), options.pckCertExtensions)
-		if tcbErr != nil {
-			err = multierr.Combine(err, tcbErr)
-		}
-
-		foundQe, qeErr := readQeTcbStatus(options.collateral.QeIdentity.EnclaveIdentity.TcbLevels, q.GetSignedData().GetCertificationData().GetQeReportCertificationData().GetQeReport().GetIsvSvn())
-		if qeErr != nil {
-			err = multierr.Combine(err, qeErr)
-		}
-		return foundTcbInfo, foundQe, err
+		teeTcbSvn = q.GetTdQuoteBody().GetTeeTcbSvn()
+		foundTcbInfo, foundTdxModuleTcbLevel, tcbErr = readTcbInfoTcbStatus(options.collateral.TdxTcbInfo.TcbInfo, q.GetTdQuoteBody(), options.pckCertExtensions)
+	case *pb.QuoteV5:
+		teeTcbSvn = q.GetTdQuoteBodyDescriptor().GetTdQuoteBodyV5().GetTeeTcbSvn()
+		foundTcbInfo, foundTdxModuleTcbLevel, tcbErr = readTcbInfoTcbStatus(options.collateral.TdxTcbInfo.TcbInfo, q.GetTdQuoteBodyDescriptor().GetTdQuoteBodyV5(), options.pckCertExtensions)
 	default:
-		return pcs.TcbLevel{}, pcs.TcbLevel{}, fmt.Errorf("unsupported quote type: %T", quote)
+		return pcs.TcbLevel{}, pcs.TcbLevel{}, fmt.Errorf("unsupported quote type %T", quote)
 	}
+	if tcbErr != nil {
+		err = multierr.Combine(err, tcbErr)
+	}
+	if teeTcbSvn[1] > 0 {
+		foundTcbInfo = foundTdxModuleTcbLevel
+	}
+
+	foundQe, qeErr := readQeTcbStatus(options.collateral.QeIdentity.EnclaveIdentity.TcbLevels, signedData.GetCertificationData().GetQeReportCertificationData().GetQeReport().GetIsvSvn())
+	if qeErr != nil {
+		err = multierr.Combine(err, qeErr)
+	}
+	return foundTcbInfo, foundQe, err
+
 }
 
-// tdxQuoteV4 verifies the QuoteV4 protobuf representation of an attestation quote's signature
+// tdxQuote verifies the QuoteV4 and QuoteV5 protobuf representation of an attestation quote's signature
 // based on the quote's SignatureAlgo, provided the certificate chain is valid.
-func tdxQuoteV4(ctx context.Context, quote *pb.QuoteV4, options *Options) error {
-	logger.V(1).Info("Checking that the quote parameters meet the required size")
-	logger.V(2).Info("Quote Version found: ", quote.Header.Version)
-	logger.V(2).Infof("Quote TeeType found: 0x%x", quote.Header.TeeType)
+func tdxQuote(ctx context.Context, quote any, options *Options) error {
 
-	if err := abi.CheckQuoteV4(quote); err != nil {
-		return fmt.Errorf("QuoteV4 invalid: %v", err)
+	checkQuoteErr := abi.CheckQuote(quote)
+
+	if checkQuoteErr != nil {
+		return fmt.Errorf("quote invalid: %v", checkQuoteErr)
 	}
+	logger.V(1).Info("Checking that the quote parameters meet the required size")
+
+	header, err := getHeader(quote)
+	if err != nil {
+		return err
+	}
+	signedData, err := getSignedData(quote)
+	if err != nil {
+		return err
+	}
+	logger.V(2).Info("Quote Version found: ", header.Version)
+	logger.V(2).Infof("Quote TeeType found: 0x%x", header.TeeType)
+
 	logger.V(1).Info("Quote parameters meet the required size")
 
 	logger.V(1).Info("Extracting PCK certificate chain from the quote")
-	chain, err := extractChainFromQuoteV4(quote)
+	chain, err := extractChainFromQuote(signedData)
 	if err != nil {
 		return err
 	}
@@ -1471,7 +1649,7 @@ func tdxQuoteV4(ctx context.Context, quote *pb.QuoteV4, options *Options) error 
 	if options.Now == nil {
 		options.Now = defaultTimeSet()
 	}
-	return verifyEvidenceV4(quote, options)
+	return verifyEvidence(quote, options)
 }
 
 // RawTdxQuote verifies the raw bytes representation of an attestation quote
@@ -1483,7 +1661,7 @@ func RawTdxQuote(raw []byte, options *Options) error {
 func RawTdxQuoteContext(ctx context.Context, raw []byte, options *Options) error {
 	quote, err := abi.QuoteToProto(raw)
 	if err != nil {
-		return fmt.Errorf("could not convert raw bytes to QuoteV4: %v", err)
+		return fmt.Errorf("could not convert raw bytes to Quote: %v", err)
 	}
 
 	return TdxQuoteContext(ctx, quote, options)
