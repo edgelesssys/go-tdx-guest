@@ -20,11 +20,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-tdx-guest/abi"
 	"github.com/google/go-tdx-guest/pcs"
 	pb "github.com/google/go-tdx-guest/proto/tdx"
@@ -89,44 +89,81 @@ func TestParsePckChain(t *testing.T) {
 }
 
 func TestPckCertificateExtensions(t *testing.T) {
+	testcases := []struct {
+		name       string
+		rawQuote   []byte
+		ppidBytes  []byte
+		fmspcBytes []byte
+		pceIDBytes []byte
+		piidBytes  []byte
+		tcb        *pcs.PckCertTCB
+		config     pcs.PckCertConfiguration
+	}{
+		{
+			name:       "TDX Prod Quote",
+			rawQuote:   testdata.RawQuote,
+			ppidBytes:  []byte{8, 157, 223, 219, 156, 3, 89, 200, 42, 59, 199, 113, 146, 57, 87, 78},
+			fmspcBytes: []byte{80, 128, 111, 0, 0, 0},
+			pceIDBytes: []byte{0, 0},
+			piidBytes:  []byte{140, 49, 77, 23, 210, 5, 223, 175, 203, 236, 187, 0, 252, 135, 239, 247},
+			tcb: &pcs.PckCertTCB{
+				PCESvn:           11,
+				CPUSvn:           []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
+				CPUSvnComponents: []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
+			},
+			config: pcs.PckCertConfiguration{
+				DynamicPlatform: true,
+				CachedKeys:      false,
+				SMTEnabled:      true,
+			},
+		},
+		{
+			name:       "TDX Prod Quote V5",
+			rawQuote:   testdata.RawQuoteV5,
+			ppidBytes:  []byte{39, 52, 182, 84, 245, 83, 89, 104, 151, 234, 173, 251, 86, 103, 169, 84},
+			fmspcBytes: []byte{144, 192, 111, 0, 0, 0},
+			pceIDBytes: []byte{0, 0},
+			piidBytes:  []byte{5, 109, 3, 80, 37, 9, 136, 128, 138, 157, 9, 16, 63, 62, 84, 213},
+			tcb: &pcs.PckCertTCB{
+				PCESvn:           13,
+				CPUSvn:           []byte{4, 4, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0},
+				CPUSvnComponents: []byte{4, 4, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0},
+			},
+			config: pcs.PckCertConfiguration{
+				DynamicPlatform: true,
+				CachedKeys:      true,
+				SMTEnabled:      true,
+			},
+		},
+	}
 
-	quote, err := abi.QuoteToProto(testdata.RawQuote)
-	if err != nil {
-		t.Fatal(err)
-	}
-	chain, err := ExtractChainFromQuote(quote)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pckExt := &pcs.PckExtensions{}
-	ppidBytes := []byte{8, 157, 223, 219, 156, 3, 89, 200, 42, 59, 199, 113, 146, 57, 87, 78}
-	piidBytes := []byte{0x8c, 0x31, 0x4d, 0x17, 0xd2, 0x5, 0xdf, 0xaf, 0xcb, 0xec, 0xbb, 0x0, 0xfc, 0x87, 0xef, 0xf7}
-	fmspcBytes := []byte{80, 128, 111, 0, 0, 0}
-	pceIDBytes := []byte{0, 0}
-	pckExt.PPID = hex.EncodeToString(ppidBytes)
-	pckExt.PIID = hex.EncodeToString(piidBytes)
-	pckExt.FMSPC = hex.EncodeToString(fmspcBytes)
-	pckExt.PCEID = hex.EncodeToString(pceIDBytes)
-	pckExt.SGXType = pcs.SGXTypeScalable
-	pckExtTcb := &pcs.PckCertTCB{
-		PCESvn:           11,
-		CPUSvn:           []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
-		CPUSvnComponents: []byte{3, 3, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
-	}
-	pckExt.TCB = *pckExtTcb
-	pckExtConfiguration := &pcs.PckCertConfiguration{
-		DynamicPlatform: true,
-		CachedKeys:      false,
-		SMTEnabled:      true,
-	}
-	pckExt.Configuration = *pckExtConfiguration
-	ext, err := pcs.PckCertificateExtensions(chain.PCKCertificate)
-	if err != nil {
-		t.Fatal(err)
-	}
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			quote, err := abi.QuoteToProto(tc.rawQuote)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chain, err := ExtractChainFromQuote(quote)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pckExt := &pcs.PckExtensions{}
+			pckExt.PPID = hex.EncodeToString(tc.ppidBytes)
+			pckExt.FMSPC = hex.EncodeToString(tc.fmspcBytes)
+			pckExt.PCEID = hex.EncodeToString(tc.pceIDBytes)
+			pckExt.PIID = hex.EncodeToString(tc.piidBytes)
+			pckExt.TCB = *tc.tcb
+			pckExt.SGXType = pcs.SGXTypeScalable
+			pckExt.Configuration = tc.config
+			ext, err := pcs.PckCertificateExtensions(chain.PCKCertificate)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	if !reflect.DeepEqual(ext, pckExt) {
-		t.Errorf("PCK certificate's extension(%v), does not match with expected extension(%v)", ext, pckExt)
+			if !cmp.Equal(ext, pckExt) {
+				t.Errorf("PCK certificate's extension(%v), does not match with expected extension(%v)", ext, pckExt)
+			}
+		})
 	}
 }
 
@@ -292,6 +329,18 @@ func TestRawQuoteVerifyWithoutCollateral(t *testing.T) {
 	}
 }
 
+func TestRawQuoteV5VerifyWithoutCollateral(t *testing.T) {
+	currentTime := time.Date(2026, time.February, 3, 1, 0, 0, 0, time.UTC)
+	options := &Options{CheckRevocations: false, GetCollateral: false, Now: testTimeSet(currentTime)}
+	for name, rawTdxQuote := range rawTdxQuoteFuncs {
+		t.Run(name, func(t *testing.T) {
+			if err := rawTdxQuote(testdata.RawQuoteV5, options); err != nil {
+				t.Errorf("%s() returned unexpected error: %v", name, err)
+			}
+		})
+	}
+}
+
 func TestRawQuoteVerifyWithoutCollateralAndCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -320,6 +369,26 @@ func TestVerifyQuoteV4(t *testing.T) {
 	}
 }
 
+func TestVerifyQuoteV5(t *testing.T) {
+	anyQuote, err := abi.QuoteToProto(testdata.RawQuoteV5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quote, ok := anyQuote.(*pb.QuoteV5)
+	if !ok {
+		t.Fatal("Quote is not a QuoteV5")
+	}
+	pckChain, err := ExtractChainFromQuote(anyQuote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentTime := time.Date(2026, time.February, 3, 1, 0, 0, 0, time.UTC)
+	options := &Options{CheckRevocations: false, GetCollateral: false, chain: pckChain, Now: testTimeSet(currentTime)}
+	if err := verifyQuote(quote, options); err != nil {
+		t.Error(err)
+	}
+}
+
 func TestNegativeVerification(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -331,13 +400,13 @@ func TestNegativeVerification(t *testing.T) {
 			name:        "Version byte Changed",
 			changeIndex: 0x00,
 			changeValue: 3,
-			wantErr:     "could not convert raw bytes to QuoteV4: quote format not supported",
+			wantErr:     "could not convert raw bytes to Quote: quote format not supported",
 		},
 		{
 			name:        "Signed data size byte Changed",
 			changeIndex: 0x278,
 			changeValue: 0x10,
-			wantErr:     "could not convert raw bytes to QuoteV4: size of certificate data is 0xf8a. Expected size 0x1045",
+			wantErr:     "could not convert raw bytes to Quote: size of certificate data is 0xf8a. Expected size 0x1045",
 		},
 		{
 			name:        "Certificate chain byte Changed",
@@ -540,20 +609,89 @@ func TestVerifyUsingTcbInfoV4(t *testing.T) {
 	if !ok {
 		t.Fatal("quote is not a QuoteV4")
 	}
-	if err := verifyTdQuoteBody(quote.GetTdQuoteBody(), &tdQuoteBodyOptions{tcbInfo: tcbInfo, pckCertExtensions: ext}); err != nil {
-		t.Error(err)
-	}
 
-	// Convert fmspc value to uppercase.
-	tcbInfo.Fmspc = strings.ToUpper(tcbInfo.Fmspc)
-	if err := verifyTdQuoteBody(quote.GetTdQuoteBody(), &tdQuoteBodyOptions{tcbInfo: tcbInfo, pckCertExtensions: ext}); err != nil {
-		t.Errorf("verifyTdQuoteBody() failed with upppercased FMSPC value: %v", err)
+	testCases := []struct {
+		name         string
+		fmspcMutator func(string) string
+	}{
+		{
+			name:         "as is",
+			fmspcMutator: func(s string) string { return s },
+		},
+		{
+			name:         "uppercase",
+			fmspcMutator: strings.ToUpper,
+		},
+		{
+			name:         "lowercase",
+			fmspcMutator: strings.ToLower,
+		},
 	}
+	originalFmspc := tcbInfo.Fmspc
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tcbInfo.Fmspc = tc.fmspcMutator(originalFmspc)
+			if err := verifyTdQuoteBody(quote.GetTdQuoteBody(), &tdQuoteBodyOptions{tcbInfo: tcbInfo, pckCertExtensions: ext}); err != nil {
+				t.Errorf("verifyTdQuoteBody() failed with %s FMSPC value: %v", tc.name, err)
+			}
+		})
+	}
+}
 
-	// Convert fmspc value to lowercase.
-	tcbInfo.Fmspc = strings.ToLower(tcbInfo.Fmspc)
-	if err := verifyTdQuoteBody(quote.GetTdQuoteBody(), &tdQuoteBodyOptions{tcbInfo: tcbInfo, pckCertExtensions: ext}); err != nil {
-		t.Errorf("verifyTdQuoteBody() failed with lowercased FMSPC value: %v", err)
+func TestVerifyUsingTcbInfoV5(t *testing.T) {
+	getter := testcases.TestGetter
+
+	anyQuote, err := abi.QuoteToProto(testdata.RawQuoteV5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain, err := ExtractChainFromQuote(anyQuote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ext, err := pcs.PckCertificateExtensions(chain.PCKCertificate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmspc := ext.FMSPC
+	collateral := &Collateral{}
+
+	if err := getTcbInfo(context.Background(), fmspc, getter, collateral, 0); err != nil {
+		t.Fatal(err)
+	}
+	tcbInfo := collateral.TdxTcbInfo.TcbInfo
+
+	quote, ok := anyQuote.(*pb.QuoteV5)
+	if !ok {
+		t.Fatal("quote is not a QuoteV5")
+	}
+	tdQuoteBody := quote.GetTdQuoteBodyDescriptor().GetTdQuoteBodyV5()
+
+	testCases := []struct {
+		name         string
+		fmspcMutator func(string) string
+	}{
+		{
+			name:         "as is",
+			fmspcMutator: func(s string) string { return s },
+		},
+		{
+			name:         "uppercase",
+			fmspcMutator: strings.ToUpper,
+		},
+		{
+			name:         "lowercase",
+			fmspcMutator: strings.ToLower,
+		},
+	}
+	originalFmspc := tcbInfo.Fmspc
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tcbInfo.Fmspc = tc.fmspcMutator(originalFmspc)
+			if err := verifyTdQuoteBody(tdQuoteBody, &tdQuoteBodyOptions{tcbInfo: tcbInfo, pckCertExtensions: ext}); err != nil {
+				t.Errorf("verifyTdQuoteBody() failed with %s FMSPC value: %v", tc.name, err)
+			}
+		})
 	}
 }
 
@@ -635,6 +773,34 @@ func TestVerifyUsingQeIdentityV4(t *testing.T) {
 	qeIdentity := collateral.QeIdentity.EnclaveIdentity
 	qeReport := quote.GetSignedData().GetCertificationData().GetQeReportCertificationData().GetQeReport()
 
+	if err := verifyQeReport(qeReport, &qeReportOptions{qeIdentity: &qeIdentity}); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestVerifyUsingQeIdentityV5(t *testing.T) {
+	getter := testcases.TestGetter
+
+	collateral := &Collateral{}
+	if err := getQeIdentity(context.Background(), getter, collateral); err != nil {
+		t.Fatal(err)
+	}
+
+	anyQuote, err := abi.QuoteToProto(testdata.RawQuoteV5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quote, ok := anyQuote.(*pb.QuoteV5)
+	if !ok {
+		t.Fatal("quote is not a QuoteV5")
+	}
+
+	qeIdentity := collateral.QeIdentity.EnclaveIdentity
+	qeReport := quote.GetSignedData().GetCertificationData().GetQeReportCertificationData().GetQeReport()
+
+	// There is no specific URL for getting QE Identity response from testdata in order to create a separate response for v5,
+	// hence to utilise existing response for testing, we are updating the ISVSVN value in the response to match the ISVSVN value in the quote.
+	qeIdentity.TcbLevels[0].Tcb.Isvsvn = 1
 	if err := verifyQeReport(qeReport, &qeReportOptions{qeIdentity: &qeIdentity}); err != nil {
 		t.Error(err)
 	}
@@ -955,6 +1121,137 @@ func TestSupportedTcbLevelsFromCollateral(t *testing.T) {
 			t.Fatal("SupportedTcbLevelsFromCollateral() didn't return an error when TcbLevels were missing")
 		}
 	})
+}
+
+func TestDetermineRelaunchAdvised(t *testing.T) {
+	tcbInfo := pcs.TcbInfo{
+		TcbLevels: []pcs.TcbLevel{
+			{
+				Tcb: pcs.Tcb{
+					TdxTcbcomponents: []pcs.TcbComponent{
+						{Svn: 1},
+						{Svn: 2},
+						{Svn: 3},
+					},
+				},
+			},
+		},
+		TdxModuleIdentities: []pcs.TdxModuleIdentity{
+			{
+				ID: "TDX_01",
+				TcbLevels: []pcs.TcbLevel{
+					{
+						Tcb: pcs.Tcb{Isvsvn: 5},
+					},
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name                  string
+		teeTcbSvn2            []byte
+		matchedTCbLevelStatus pcs.TcbComponentStatus
+		tdxModuleTcbStatus    pcs.TcbComponentStatus
+		tcbInfo               pcs.TcbInfo
+		wantErr               string
+	}{
+		{
+			name:                  "Nil teeTcbSvn2",
+			teeTcbSvn2:            nil,
+			matchedTCbLevelStatus: pcs.TcbComponentStatusUpToDate,
+			tdxModuleTcbStatus:    pcs.TcbComponentStatusOutOfDate,
+			tcbInfo:               tcbInfo,
+			wantErr:               "",
+		},
+		{
+			name:                  "TcbComponentStatus UpToDate",
+			teeTcbSvn2:            []byte{1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			matchedTCbLevelStatus: pcs.TcbComponentStatusUpToDate,
+			tdxModuleTcbStatus:    pcs.TcbComponentStatusUpToDate,
+			tcbInfo:               tcbInfo,
+			wantErr:               "",
+		},
+		{
+			name:                  "teeTcbSvn2[1]=0 relaunch advised without config",
+			teeTcbSvn2:            []byte{1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			matchedTCbLevelStatus: pcs.TcbComponentStatusUpToDate,
+			tdxModuleTcbStatus:    pcs.TcbComponentStatusOutOfDate,
+			tcbInfo:               tcbInfo,
+			wantErr:               ErrTcbTdRelaunchAdvised.Error(),
+		},
+		{
+			name:                  "teeTcbSvn2[1]=0 relaunch with config changes",
+			teeTcbSvn2:            []byte{1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			matchedTCbLevelStatus: pcs.TcbComponentStatusConfigurationNeeded,
+			tdxModuleTcbStatus:    pcs.TcbComponentStatusOutOfDate,
+			tcbInfo:               tcbInfo,
+			wantErr:               ErrTcbTdRelaunchAdvicedConfiguratonNeeded.Error(),
+		},
+		{
+			name:                  "teeTcbSvn2[1]=0 relaunch with config from tdxModule",
+			teeTcbSvn2:            []byte{1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			matchedTCbLevelStatus: pcs.TcbComponentStatusUpToDate,
+			tdxModuleTcbStatus:    pcs.TcbComponentStatusOutOfDateConfigurationNeeded,
+			tcbInfo:               tcbInfo,
+			wantErr:               ErrTcbTdRelaunchAdvicedConfiguratonNeeded.Error(),
+		},
+		{
+			name:                  "teeTcbSvn2[1]=0 no relaunch conditions should succeed",
+			teeTcbSvn2:            []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			matchedTCbLevelStatus: pcs.TcbComponentStatusUpToDate,
+			tdxModuleTcbStatus:    pcs.TcbComponentStatusOutOfDate,
+			tcbInfo:               tcbInfo,
+			wantErr:               "",
+		},
+		{
+			name:                  "teeTcbSvn2[1]!=0 relaunch advised",
+			teeTcbSvn2:            []byte{5, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, // ID matching will look for TDX_01
+			matchedTCbLevelStatus: pcs.TcbComponentStatusUpToDate,
+			tdxModuleTcbStatus:    pcs.TcbComponentStatusOutOfDate,
+			tcbInfo:               tcbInfo,
+			wantErr:               ErrTcbTdRelaunchAdvised.Error(),
+		},
+		{
+			name:                  "teeTcbSvn2[1]!=0 relaunch with config changes advised",
+			teeTcbSvn2:            []byte{5, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, // ID matching will look for TDX_01
+			matchedTCbLevelStatus: pcs.TcbComponentStatusConfigurationNeeded,
+			tdxModuleTcbStatus:    pcs.TcbComponentStatusOutOfDate,
+			tcbInfo:               tcbInfo,
+			wantErr:               ErrTcbTdRelaunchAdvicedConfiguratonNeeded.Error(),
+		},
+		{
+			name:                  "teeTcbSvn2[1]!=0 module id mismatch ",
+			teeTcbSvn2:            []byte{5, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, // ID matching will look for TDX_02
+			matchedTCbLevelStatus: pcs.TcbComponentStatusUpToDate,
+			tdxModuleTcbStatus:    pcs.TcbComponentStatusOutOfDate,
+			tcbInfo:               tcbInfo,
+			wantErr:               "could not find a TDX Module Identity (\"TDX_02\") matching the given TEE TDX version (\"\\x02\")",
+		},
+		{
+			name:                  "teeTcbSvn2[1]!=0 no relaunch conditions met",
+			teeTcbSvn2:            []byte{5, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, // teeTcbSvn2[2] (2) < latestTcbLevel.Tcb.TdxTcbcomponents[2].Svn (3)
+			matchedTCbLevelStatus: pcs.TcbComponentStatusUpToDate,
+			tdxModuleTcbStatus:    pcs.TcbComponentStatusOutOfDate,
+			tcbInfo:               tcbInfo,
+			wantErr:               "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := determineRelaunchAdvised(tc.teeTcbSvn2, tc.matchedTCbLevelStatus, tc.tdxModuleTcbStatus, tc.tcbInfo)
+			if err == nil {
+				if tc.wantErr != "" {
+					t.Errorf("determineRelaunchAdvised() = nil, want %v", tc.wantErr)
+				}
+			} else {
+				if err.Error() != tc.wantErr {
+					t.Errorf("determineRelaunchAdvised() = %v, want %v", err, tc.wantErr)
+				}
+			}
+		})
+	}
 }
 
 var rawTdxQuoteFuncs = map[string]func([]byte, *Options) error{

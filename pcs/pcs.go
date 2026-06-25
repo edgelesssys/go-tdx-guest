@@ -31,12 +31,12 @@ const (
 	pckCertExtensionSize = 6
 	sgxExtensionMinSize  = 4
 	tcbExtensionSize     = 18
-	piidSize             = 16
 	ppidSize             = 16
 	cpuSvnSize           = 16
 	fmspcSize            = 6
 	pceIDSize            = 2
 	tcbComponentSize     = 16
+	piidSize             = 16
 	// sgxPckCrlIssuerChainHeaderKey retrieves the issuer chain from the Intel PCS API:
 	// https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-revocation-v4
 	sgxPckCrlIssuerChainHeaderKey = "SGX-PCK-CRL-Issuer-Chain"
@@ -76,10 +76,10 @@ var (
 	OidPCEID = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 3})
 	// OidFMSPC  is the x509v3 extension for PCK certificate's SGX Extensions FMSPC value.
 	OidFMSPC = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 4})
+	// OidPIID is the x509v3 extension for PCK certificate's SGX Extensions Platform Instance ID value.
+	OidPIID = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 6})
 	// OidSGXType is the x509v3 extension for PCK certificate's SGX Extensions SGX Type value.
 	OidSGXType = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 5})
-	// OidPIID is the x509v3 extension for PCK certificate's SGX Extensions PIID value.
-	OidPIID = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 6})
 	// OidConfiguration is the x509v3 extension for the PCK certificate's configuration extension.
 	OidConfiguration = asn1.ObjectIdentifier([]int{1, 2, 840, 113741, 1, 13, 1, 7})
 	// OidDynamicPlatform is the x509v3 extension for the PCK certificate's DynamicPlatform configuration extension.
@@ -202,8 +202,8 @@ type PckExtensions struct {
 	TCB           PckCertTCB
 	PCEID         string
 	FMSPC         string
-	SGXType       SGXType
 	PIID          string
+	SGXType       SGXType
 	Configuration PckCertConfiguration
 }
 
@@ -256,6 +256,8 @@ const (
 	TcbComponentStatusOutOfDateConfigurationNeeded TcbComponentStatus = "OutOfDateConfigurationNeeded"
 	// TcbComponentStatusRevoked denotes tcb status as Revoked
 	TcbComponentStatusRevoked TcbComponentStatus = "Revoked"
+	// TcbComponentStatusRelaunchAdvisedConfigurationNeeded denotes tcb status as RelaunchAdvisedConfigurationNeeded
+	TcbComponentStatusRelaunchAdvisedConfigurationNeeded TcbComponentStatus = "RelaunchAdvisedConfigurationNeeded"
 )
 
 // UnmarshalJSON for TcbComponentStatus maps tcb status to corresponding valid strings
@@ -520,6 +522,12 @@ func extractSgxExtensions(extensions []asn1.RawValue) (*PckExtensions, error) {
 				return nil, err
 			}
 		}
+		if sExtension.Type.Equal(OidPIID) {
+			pckExtension.PIID, err = extractAsn1OctetStringExtension("PIID", extensions[i], piidSize)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if sExtension.Type.Equal(OidSGXType) {
 			var sExtension attributeTypeAndEnumerated
 			_, err := asn1.Unmarshal(ext.FullBytes, &sExtension)
@@ -527,12 +535,6 @@ func extractSgxExtensions(extensions []asn1.RawValue) (*PckExtensions, error) {
 				return nil, fmt.Errorf("could not parse SGX extension's in PCK certificate: %v", err)
 			}
 			pckExtension.SGXType = SGXType(sExtension.Value)
-		}
-		if sExtension.Type.Equal(OidPIID) {
-			pckExtension.PIID, err = extractAsn1OctetStringExtension("PIID", extensions[i], piidSize)
-			if err != nil {
-				return nil, err
-			}
 		}
 		if sExtension.Type.Equal(OidConfiguration) {
 			configuration, err := extractAsn1SequenceConfigExtension(extensions[i])
