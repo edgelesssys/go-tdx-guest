@@ -162,6 +162,9 @@ func checkOptionsLengths(opts *Options) error {
 		lengthCheckMany("rtmrs", eqConstraint, abi.RtmrSize, opts.TdQuoteBodyOptions.Rtmrs),
 		lengthCheckMany("any_mr_td", nil, abi.MrTdSize, opts.TdQuoteBodyOptions.AnyMrTd),
 	)
+	if opts.TdQuoteBodyOptions.MinimumTeeTcbSvn != nil {
+		lengthErr = multierr.Combine(lengthErr, lengthCheck("minimum_tee_tcb_svn", abi.TeeTcbSvnSize, opts.TdQuoteBodyOptions.MinimumTeeTcbSvn))
+	}
 	if opts.TdQuoteBodyOptions.MinimumTeeTcbSvn2 != nil {
 		lengthErr = multierr.Combine(lengthErr, lengthCheck("minimum_tee_tcb_svn2", abi.TeeTcbSvn2SizeV5, opts.TdQuoteBodyOptions.MinimumTeeTcbSvn2))
 	}
@@ -236,6 +239,9 @@ func byteCheckAny(size int, given []byte, allowed [][]byte) error {
 		return nil
 	}
 	for i, bs := range allowed {
+		if len(bs) == 0 {
+			continue
+		}
 		if err := byteCheck("MrTd", fmt.Sprintf("AnyMrTd[%d]", i), size, given, bs); err == nil {
 			return nil
 		}
@@ -341,6 +347,9 @@ func isTdx15Quote(quote any) bool {
 func isSvnHigherOrEqual(quoteSvn []byte, optionSvn []byte) bool {
 	if optionSvn == nil {
 		return true
+	}
+	if len(quoteSvn) != len(optionSvn) {
+		return false
 	}
 	for i := range quoteSvn {
 		if quoteSvn[i] < optionSvn[i] {
@@ -514,6 +523,9 @@ func validatePck(quote any, opts *PCKOptions) error {
 func TdxQuote(quote any, options *Options) error {
 	if options == nil {
 		return vr.ErrOptionsNil
+	}
+	if err := checkOptionsLengths(options); err != nil {
+		return err
 	}
 
 	if err := abi.CheckQuote(quote); err != nil {

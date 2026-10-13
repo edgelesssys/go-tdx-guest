@@ -118,6 +118,9 @@ func (p *LinuxConfigFsQuoteProvider) IsSupported() error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		_ = r.Destroy()
+	}()
 	provider, err := r.ReadOption("provider")
 	if err != nil {
 		return err
