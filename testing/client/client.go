@@ -18,8 +18,8 @@ package client
 import (
 	"testing"
 
-	"github.com/google/go-tdx-guest/client"
-	test "github.com/google/go-tdx-guest/testing"
+	"github.com/edgelesssys/go-tdx-guest/client"
+	test "github.com/edgelesssys/go-tdx-guest/testing"
 )
 
 // GetTdxGuest is a testing helper function that retrieves the

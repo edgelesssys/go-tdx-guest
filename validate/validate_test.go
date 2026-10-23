@@ -18,12 +18,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-tdx-guest/pcs"
-	pb "github.com/google/go-tdx-guest/proto/tdx"
-	vr "github.com/google/go-tdx-guest/verify"
+	"github.com/edgelesssys/go-tdx-guest/pcs"
+	pb "github.com/edgelesssys/go-tdx-guest/proto/tdx"
+	vr "github.com/edgelesssys/go-tdx-guest/verify"
 
-	"github.com/google/go-tdx-guest/abi"
-	"github.com/google/go-tdx-guest/testing/testdata"
+	"github.com/edgelesssys/go-tdx-guest/abi"
+	"github.com/edgelesssys/go-tdx-guest/testing/testdata"
 )
 
 func TestTdxQuoteV5(t *testing.T) {

@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/google/go-tdx-guest/abi"
-	labi "github.com/google/go-tdx-guest/client/linuxabi"
+	"github.com/edgelesssys/go-tdx-guest/abi"
+	labi "github.com/edgelesssys/go-tdx-guest/client/linuxabi"
 	"github.com/google/logger"
 )
 

@@ -1,4 +1,4 @@
-module github.com/google/go-tdx-guest
+module github.com/edgelesssys/go-tdx-guest
 
 go 1.20
 

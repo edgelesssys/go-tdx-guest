@@ -16,9 +16,9 @@
 package testing
 
 import (
-	labi "github.com/google/go-tdx-guest/client/linuxabi"
-	"github.com/google/go-tdx-guest/pcs"
-	"github.com/google/go-tdx-guest/testing/testdata"
+	labi "github.com/edgelesssys/go-tdx-guest/client/linuxabi"
+	"github.com/edgelesssys/go-tdx-guest/pcs"
+	"github.com/edgelesssys/go-tdx-guest/testing/testdata"
 )
 
 var pckCrlIssuerChain = []string{

@@ -26,10 +26,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/go-tdx-guest/abi"
-	"github.com/google/go-tdx-guest/gce"
-	"github.com/google/go-tdx-guest/validate"
-	"github.com/google/go-tdx-guest/verify"
+	"github.com/edgelesssys/go-tdx-guest/abi"
+	"github.com/edgelesssys/go-tdx-guest/gce"
+	"github.com/edgelesssys/go-tdx-guest/validate"
+	"github.com/edgelesssys/go-tdx-guest/verify"
 )
 
 const (

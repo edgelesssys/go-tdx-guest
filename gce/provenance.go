@@ -25,11 +25,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/go-tdx-guest/abi"
-	tg "github.com/google/go-tdx-guest/client"
-	"github.com/google/go-tdx-guest/pcs"
-	pb "github.com/google/go-tdx-guest/proto/tdx"
-	"github.com/google/go-tdx-guest/verify"
+	"github.com/edgelesssys/go-tdx-guest/abi"
+	tg "github.com/edgelesssys/go-tdx-guest/client"
+	"github.com/edgelesssys/go-tdx-guest/pcs"
+	pb "github.com/edgelesssys/go-tdx-guest/proto/tdx"
+	"github.com/edgelesssys/go-tdx-guest/verify"
 )
 
 // GCSBaseURL is the base URL for Google Cloud Storage APIs.

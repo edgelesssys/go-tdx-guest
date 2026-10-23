@@ -19,7 +19,7 @@ import (
 	"crypto/sha512"
 	"testing"
 
-	pb "github.com/google/go-tdx-guest/proto/tdx"
+	pb "github.com/edgelesssys/go-tdx-guest/proto/tdx"
 )
 
 func TestPZIDPayload(t *testing.T) {

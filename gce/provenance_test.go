@@ -23,10 +23,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/google/go-tdx-guest/abi"
-	tg "github.com/google/go-tdx-guest/client"
-	pb "github.com/google/go-tdx-guest/proto/tdx"
-	"github.com/google/go-tdx-guest/testing/testdata"
+	"github.com/edgelesssys/go-tdx-guest/abi"
+	tg "github.com/edgelesssys/go-tdx-guest/client"
+	pb "github.com/edgelesssys/go-tdx-guest/proto/tdx"
+	"github.com/edgelesssys/go-tdx-guest/testing/testdata"
 )
 
 type fakeQuoteProvider struct {

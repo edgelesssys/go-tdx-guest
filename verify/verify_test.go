@@ -24,12 +24,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/edgelesssys/go-tdx-guest/abi"
+	"github.com/edgelesssys/go-tdx-guest/pcs"
+	pb "github.com/edgelesssys/go-tdx-guest/proto/tdx"
+	testcases "github.com/edgelesssys/go-tdx-guest/testing"
+	"github.com/edgelesssys/go-tdx-guest/testing/testdata"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-tdx-guest/abi"
-	"github.com/google/go-tdx-guest/pcs"
-	pb "github.com/google/go-tdx-guest/proto/tdx"
-	testcases "github.com/google/go-tdx-guest/testing"
-	"github.com/google/go-tdx-guest/testing/testdata"
 	"github.com/google/logger"
 )
 
