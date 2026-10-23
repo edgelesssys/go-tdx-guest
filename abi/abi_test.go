@@ -19,8 +19,8 @@ import (
 	"encoding/binary"
 	"testing"
 
-	pb "github.com/google/go-tdx-guest/proto/tdx"
-	test "github.com/google/go-tdx-guest/testing/testdata"
+	pb "github.com/edgelesssys/go-tdx-guest/proto/tdx"
+	test "github.com/edgelesssys/go-tdx-guest/testing/testdata"
 	"google.golang.org/protobuf/proto"
 )
 

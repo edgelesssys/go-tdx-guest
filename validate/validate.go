@@ -24,11 +24,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/go-tdx-guest/abi"
-	"github.com/google/go-tdx-guest/pcs"
-	ccpb "github.com/google/go-tdx-guest/proto/checkconfig"
-	pb "github.com/google/go-tdx-guest/proto/tdx"
-	vr "github.com/google/go-tdx-guest/verify"
+	"github.com/edgelesssys/go-tdx-guest/abi"
+	"github.com/edgelesssys/go-tdx-guest/pcs"
+	ccpb "github.com/edgelesssys/go-tdx-guest/proto/checkconfig"
+	pb "github.com/edgelesssys/go-tdx-guest/proto/tdx"
+	vr "github.com/edgelesssys/go-tdx-guest/verify"
 	"github.com/google/logger"
 	"go.uber.org/multierr"
 )

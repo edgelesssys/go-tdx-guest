@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-tdx-guest/abi"
-	"github.com/google/go-tdx-guest/gce"
-	pb "github.com/google/go-tdx-guest/proto/tdx"
-	"github.com/google/go-tdx-guest/testing/testdata"
+	"github.com/edgelesssys/go-tdx-guest/abi"
+	"github.com/edgelesssys/go-tdx-guest/gce"
+	pb "github.com/edgelesssys/go-tdx-guest/proto/tdx"
+	"github.com/edgelesssys/go-tdx-guest/testing/testdata"
 )
 
 func TestParseCommandFlagsDefaults(t *testing.T) {

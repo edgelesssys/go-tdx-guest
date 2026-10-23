@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-tdx-guest/verify/trust"
+	"github.com/edgelesssys/go-tdx-guest/verify/trust"
 )
 
 // Ensure that the HTTPSGetters implement the expected interfaces.

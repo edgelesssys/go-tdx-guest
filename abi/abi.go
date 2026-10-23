@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"math/big"
 
-	pb "github.com/google/go-tdx-guest/proto/tdx"
+	pb "github.com/edgelesssys/go-tdx-guest/proto/tdx"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
 )

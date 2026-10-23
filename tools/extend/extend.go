@@ -26,7 +26,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/google/go-tdx-guest/rtmr"
+	"github.com/edgelesssys/go-tdx-guest/rtmr"
 	"github.com/google/logger"
 )
 

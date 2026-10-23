@@ -19,10 +19,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/edgelesssys/go-tdx-guest/abi"
+	labi "github.com/edgelesssys/go-tdx-guest/client/linuxabi"
+	test "github.com/edgelesssys/go-tdx-guest/testing"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-tdx-guest/abi"
-	labi "github.com/google/go-tdx-guest/client/linuxabi"
-	test "github.com/google/go-tdx-guest/testing"
 	"google.golang.org/protobuf/testing/protocmp"
 )
 

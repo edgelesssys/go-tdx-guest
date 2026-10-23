@@ -20,7 +20,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/google/go-tdx-guest/testing/testdata"
+	"github.com/edgelesssys/go-tdx-guest/testing/testdata"
 )
 
 const (

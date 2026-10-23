@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/google/go-tdx-guest/abi"
-	pb "github.com/google/go-tdx-guest/proto/tdx"
+	"github.com/edgelesssys/go-tdx-guest/abi"
+	pb "github.com/edgelesssys/go-tdx-guest/proto/tdx"
 )
 
 // PZIDPayload returns the canonical ASCII JSON payload used to bind GCE project,
